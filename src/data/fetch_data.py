@@ -2,9 +2,9 @@ import requests
 import pandas as pd
 
 class DataFetcher:
-    BASE_URL = "https://api3.binance.com/api/v3/klines"
+    BASE_URL = "https://api4.binance.com/api/v3/klines"
 
-    def __init__(self, symbol: str = "BTCUSDT", interval: str = "15m", limit: int = 1001):
+    def __init__(self, symbol: str = "SOLUSDT", interval: str = "15m", limit: int = 1001):
         self.symbol = symbol
         self.interval = interval
         self.limit = limit
@@ -17,7 +17,7 @@ class DataFetcher:
         }
         resp = requests.get(self.BASE_URL, params=params)
         data = resp.json()
-    
+
         formatted_data = []
         for candle in data:
             item = {
