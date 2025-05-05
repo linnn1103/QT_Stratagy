@@ -80,7 +80,7 @@ if __name__ == "__main__":
         closes.append(candle['close'])
         print(f"{candle['timestamp']}: Close = {candle['close']}")
 
-    fetcher = WebSocketDataFetcher(symbol="BTCUSDT", interval="1s", on_candle=handle_candle)
+    fetcher = WebSocketDataFetcher(symbol="SOLUSDT", interval="1s", on_candle=handle_candle)
     fetcher.start()
 
     import time; time.sleep(600)

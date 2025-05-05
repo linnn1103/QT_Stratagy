@@ -22,4 +22,3 @@ class Indicator:
         plus_di = talib.PLUS_DI(high_prices, low_prices, close_prices, timeperiod=period)
         minus_di = talib.MINUS_DI(high_prices, low_prices, close_prices, timeperiod=period)
         return plus_di, minus_di
-    
