@@ -43,10 +43,10 @@ def main():
         "ATR Period", min_value=1, max_value=100, value=14
     )
     swing_window = st.sidebar.number_input(
-        "Swing Window", min_value=1, max_value=50, value=14
+        "Swing Window", min_value=1, max_value=50, value=30
     )
     fvg_window = st.sidebar.number_input(
-        "FVG Window", min_value=2, max_value=50, value=3
+        "FVG Window", min_value=2, max_value=50, value=21
     )
     vol_mul = st.sidebar.slider(
         "Volatility Multiplier", 0.1, 5.0, value=1.5, step=0.1
