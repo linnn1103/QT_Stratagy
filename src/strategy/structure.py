@@ -103,7 +103,7 @@ class SMCStrategy:
             if c2['high'] < c1['low'] and c3['close'] < c2['high']:
                 df.at[df.index[i], 'fvg_bearish'] = True
         return df
-
+        
     def run(self) -> pd.DataFrame:
         """
         Orchestrates data fetching and all SMC computations.

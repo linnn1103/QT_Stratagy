@@ -5,17 +5,17 @@ class Indicator:
     def __init__(self, data: pd.DataFrame):
         self.data = data
     
-    def get_EMA(self, period: int) -> pd.Series:
+    def get_EMA(self, period=30) -> pd.Series:
         close_prices = np.array([d['close'] for d in self.data], dtype=float)
         return talib.EMA(close_prices, timeperiod=period)
     
-    def get_ADX(self, period: int) -> pd.Series:
+    def get_ADX(self, period=14) -> pd.Series:
         high_prices = np.array([d['high'] for d in self.data], dtype=float)
         low_prices = np.array([d['low'] for d in self.data], dtype=float)
         close_prices = np.array([d['close'] for d in self.data], dtype=float)
         return talib.ADX(high_prices, low_prices, close_prices, timeperiod=period)
     
-    def get_DI(self, period: int) -> tuple:
+    def get_DI(self, period= 14) -> tuple:
         high_prices = np.array([d['high'] for d in self.data], dtype=float)
         low_prices = np.array([d['low'] for d in self.data], dtype=float)
         close_prices = np.array([d['close'] for d in self.data], dtype=float)

@@ -1,7 +1,3 @@
-"""
-Buy Honda CBR650R
-"""
-
 import json
 import threading
 import pandas as pd
@@ -9,9 +5,6 @@ import websocket
 
 class WebSocketDataFetcher:
     """
-    Fetches live kline (candlestick) data from Binance WebSocket streams.
-
-    Attributes:
         symbol (str): Trading pair symbol, e.g. "BTCUSDT".
         interval (str): Kline interval, e.g. "15m".
         on_candle (callable): Callback function that receives a dict
@@ -19,7 +12,7 @@ class WebSocketDataFetcher:
     """
     STREAM_URL = "wss://stream.binance.com:9443/ws"
 
-    def __init__(self, symbol: str = "BTCUSDT", interval: str = "1s", on_candle=None):
+    def __init__(self, symbol: str = "BTCUSDT", interval: str = "15m", on_candle=None):
         self.symbol = symbol
         self.interval = interval
         self.on_candle = on_candle or (lambda x: print(x))
@@ -84,7 +77,7 @@ if __name__ == "__main__":
         closes.append(candle['close'])
         print(f"{candle['timestamp']}: Close = {candle['close']}")
 
-    fetcher = WebSocketDataFetcher(symbol="SOLUSDT", interval="1s", on_candle=handle_candle)
+    fetcher = WebSocketDataFetcher(symbol="SOLUSDT", interval="15m", on_candle=handle_candle)
     fetcher.start()
 
     import time; time.sleep(600)

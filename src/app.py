@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from strategy.structure import SMCStrategy
-
 @st.cache_data(show_spinner=False)
 def get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul):
     smc = SMCStrategy(
@@ -64,7 +63,7 @@ def main():
         "Interval", ["1m", "5m", "15m", "30m", "1h", "4h", "1d"], index=2
     )
     limit = st.sidebar.slider(
-        "Data Points (limit)", min_value=100, max_value=2000, value=500, step=100
+        "Data Points (limit)", min_value=100, max_value=2000, value=600, step=100
     )
     atr_period = st.sidebar.number_input(
         "ATR Period", min_value=1, max_value=100, value=14
@@ -76,7 +75,7 @@ def main():
         "FVG Window", min_value=2, max_value=50, value=3
     )
     vol_mul = st.sidebar.slider(
-        "Volatility Multiplier", 0.1, 5.0, value=1.5, step=0.1
+        "Volatility Multiplier", 0.1, 5.0, value=1.3, step=0.1
     )
 
     # Reactive compute
@@ -84,20 +83,88 @@ def main():
         df = get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul)
     st.success("Computation completed!")
 
-    # Display last CHOCH info
-    if df['CHOCH'].any():
-        last = df[df['CHOCH']].iloc[-1]
-        direction = 'Bullish' if last['close'] > last['open'] else 'Bearish'
+    # Generate trade entries based on CHOCH signals
+    trades = []
+    active_trade = None  
+    for idx, row in df.iterrows():
+        if row['CHOCH']:
+            direction = 'Long' if row['close'] > row['open'] else 'Short'
+            entry_time = row['timestamp']
+            entry_price = row['close']
+            # Find reverse structure_break
+            if direction == 'Long':
+                cond_sl = df['structure_break'] == 'break_low'
+                prev_sl = df.loc[:idx-1][cond_sl]
+                stop_loss = prev_sl.iloc[-1]['low'] if not prev_sl.empty else None
+                # cond_tp = df['structure_break'] == 'break_high'
+                # prev_tp = df.loc[:idx-1][cond_tp]
+                # stop_profit = prev_tp.iloc[-1]['low'] if not prev_tp.empty else None
+            else:
+                cond_sl = df['structure_break'] == 'break_high'
+                prev_sl = df.loc[:idx-1][cond_sl]
+                stop_loss = prev_sl.iloc[-1]['high'] if not prev_sl.empty else None
+                # cond_tp = df['structure_break'] == 'break_low'
+                # prev_tp = df.loc[:idx-1][cond_tp]
+                # stop_profit = prev_tp.iloc[-5]['high'] if not prev_tp.empty else None
+            
+            if not active_trade:
+                trades.append({
+                    'entry_time': entry_time,
+                    'entry_price': entry_price,
+                    'direction': direction,
+                    'stop_loss': stop_loss
+                    # 'stop_profit': stop_profit
+                })
+                active_trade = {
+                    'idx': idx,
+                    'direction': direction,
+                    'stop_loss': stop_loss
+                    # 'stop_profit': stop_profit
+                }
+                continue
+
+            if active_trade['direction'] == direction:
+                continue
+
+            if active_trade['direction'] == 'Long':
+                sl_hit = (df.loc[active_trade['idx']:idx]['low'] <= active_trade['stop_loss']).any() if active_trade['stop_loss'] is not None else False
+            else:
+                sl_hit = (df.loc[active_trade['idx']:idx]['high'] >= active_trade['stop_loss']).any() if active_trade['stop_loss'] is not None else False
+
+            if not sl_hit:
+                continue
+
+            trades.append({
+                'entry_time': entry_time,
+                'entry_price': entry_price,
+                'direction': direction,
+                'stop_loss': stop_loss
+                # 'stop_profit': stop_profit
+            })
+            active_trade = {
+                'idx': idx,
+                'direction': direction,
+                'stop_loss': stop_loss
+                # 'stop_profit': stop_profit
+            }
+
+    # Display last CHOCH info and trades table
+    if trades:
+        last = trades[-1]
         st.subheader("Last Entry Signal")
-        st.write(f"**Time (UTC+8):** {last['timestamp']}")
-        st.write(f"**Price:** {last['close']}")
-        st.write(f"**Direction:** {direction}")
+        st.write(f"**Time (UTC+8):** {last['entry_time']}")
+        st.write(f"**Price:** {last['entry_price']}")
+        st.write(f"**Direction:** {last['direction']}")
+
+        st.subheader("Trade Entries")
+        trades_df = pd.DataFrame(trades)
+        st.dataframe(trades_df)
 
     # Build dynamic zones
     zones = {'ob': [], 'fvg': [], 'structure': []}
     last_time = df['timestamp'].iat[-1]
 
-    # Order Block zones
+    # Order Block, FVG, Structure zones (logic unchanged)
     for i, row in df.iterrows():
         if row['bullish_ob']:
             y0, y1 = row['low'], row['high']
@@ -109,8 +176,6 @@ def main():
             broken = any(df['close'].iloc[j] >= y1 for j in range(i+1, len(df)))
             if not broken:
                 zones['ob'].append({'type': 'bearish', 'start': row['timestamp'], 'end': last_time, 'y0': y0, 'y1': y1})
-
-    # FVG zones
     for i in range(fvg_window, len(df)):
         if df['fvg_bullish'].iat[i]:
             c1, c2 = df.iloc[i-fvg_window], df.iloc[i-fvg_window+1]
@@ -124,8 +189,6 @@ def main():
             broken = any(df['close'].iloc[j] >= y0 for j in range(i+1, len(df)))
             if not broken:
                 zones['fvg'].append({'type': 'bearish', 'start': c2['timestamp'], 'end': last_time, 'y0': y0, 'y1': y1})
-
-    # Structure break zones
     for i, row in df.iterrows():
         if row['structure_break'] == 'break_high':
             y0, y1 = row['low'], row['high']
