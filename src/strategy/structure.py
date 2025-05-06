@@ -7,31 +7,15 @@ import talib
 class SMCStrategy:
     def __init__(
         self,
-        symbol: str = "SOLUSDT",
-        interval: str = "15m",
-        limit: int = 1000,
         atr_period: int = 14,
         swing_window: int = 5,
         fvg_window: int = 3,
         volatility_multiplier: float = 1.0,
     ):
-        # Initialize data fetcher and parameters
-        self.fetcher = DataFetcher(symbol=symbol, interval=interval, limit=limit)
         self.atr_period = atr_period
         self.swing_window = swing_window
         self.fvg_window = fvg_window
         self.volatility_multiplier = volatility_multiplier
-
-    def fetch_data(self) -> pd.DataFrame:
-        """
-        Fetches klines and calculates ATR.
-        Returns a DataFrame with raw OHLCV and ATR.
-        """
-        df = self.fetcher.fetch_klines()
-        df['atr'] = talib.ATR(
-            df['high'], df['low'], df['close'], timeperiod=self.atr_period
-        )
-        return df
 
     def find_swings(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -103,21 +87,12 @@ class SMCStrategy:
             if c2['high'] < c1['low'] and c3['close'] < c2['high']:
                 df.at[df.index[i], 'fvg_bearish'] = True
         return df
-        
-    def run(self) -> pd.DataFrame:
-        """
-        Orchestrates data fetching and all SMC computations.
-        Returns enriched DataFrame.
-        """
-        df = self.fetch_data()
+    def run(self, df: pd.DataFrame) -> pd.DataFrame:
+        df['atr'] = talib.ATR(
+            df['high'], df['low'], df['close'], timeperiod=self.atr_period
+        )
         df = self.find_swings(df)
         df = self.identify_structure_breaks(df)
         df = self.detect_order_blocks(df)
         df = self.detect_fvg(df)
         return df
-
-
-if __name__ == "__main__":
-    smc = SMCStrategy(symbol="SOLUSDT", interval="15m", limit=500)
-    result = smc.run()
-    print(result.tail(20))

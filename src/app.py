@@ -1,19 +1,21 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+from data.fetch_data import DataFetcher
 from strategy.structure import SMCStrategy
+from utils.order_filter import Filter
+
 @st.cache_data(show_spinner=False)
-def get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul):
+def get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul) -> tuple:
+    fetcher = DataFetcher(symbol=symbol, interval=interval, limit=limit)
+    raw_df = fetcher.fetch_klines()
     smc = SMCStrategy(
-        symbol=symbol,
-        interval=interval,
-        limit=limit,
         atr_period=atr_period,
         swing_window=swing_window,
         fvg_window=fvg_window,
         volatility_multiplier=vol_mul
     )
-    df = smc.run()
+    df = smc.run(raw_df)
     # Convert timestamp to UTC+8 and drop tzinfo for plotting
     df['timestamp'] = (
         df['timestamp']
@@ -50,7 +52,7 @@ def get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vo
 
     # If CHOCH occurs, suppress BOS at the same index
     df.loc[df['CHOCH'], 'BOS'] = False
-    return df
+    return raw_df, df
 
 
 def main():
@@ -80,7 +82,7 @@ def main():
 
     # Reactive compute
     with st.spinner("Fetching data and computing strategy..."):
-        df = get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul)
+        raw_df, df = get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul)
     st.success("Computation completed!")
 
     # Generate trade entries based on CHOCH signals
@@ -88,24 +90,20 @@ def main():
     active_trade = None  
     for idx, row in df.iterrows():
         if row['CHOCH']:
+            if not Filter(raw_df).ADX_fillter(idx):
+                continue
             direction = 'Long' if row['close'] > row['open'] else 'Short'
             entry_time = row['timestamp']
             entry_price = row['close']
             # Find reverse structure_break
             if direction == 'Long':
-                cond_sl = df['structure_break'] == 'break_low'
-                prev_sl = df.loc[:idx-1][cond_sl]
+                cond_sl = (df['structure_break'] == 'break_low')
+                prev_sl = df[cond_sl].loc[:idx-1]
                 stop_loss = prev_sl.iloc[-1]['low'] if not prev_sl.empty else None
-                # cond_tp = df['structure_break'] == 'break_high'
-                # prev_tp = df.loc[:idx-1][cond_tp]
-                # stop_profit = prev_tp.iloc[-1]['low'] if not prev_tp.empty else None
             else:
-                cond_sl = df['structure_break'] == 'break_high'
-                prev_sl = df.loc[:idx-1][cond_sl]
+                cond_sl = (df['structure_break'] == 'break_high')
+                prev_sl = df[cond_sl].loc[:idx-1]
                 stop_loss = prev_sl.iloc[-1]['high'] if not prev_sl.empty else None
-                # cond_tp = df['structure_break'] == 'break_low'
-                # prev_tp = df.loc[:idx-1][cond_tp]
-                # stop_profit = prev_tp.iloc[-5]['high'] if not prev_tp.empty else None
             
             if not active_trade:
                 trades.append({
@@ -113,13 +111,11 @@ def main():
                     'entry_price': entry_price,
                     'direction': direction,
                     'stop_loss': stop_loss
-                    # 'stop_profit': stop_profit
                 })
                 active_trade = {
                     'idx': idx,
                     'direction': direction,
                     'stop_loss': stop_loss
-                    # 'stop_profit': stop_profit
                 }
                 continue
 
@@ -139,13 +135,11 @@ def main():
                 'entry_price': entry_price,
                 'direction': direction,
                 'stop_loss': stop_loss
-                # 'stop_profit': stop_profit
             })
             active_trade = {
                 'idx': idx,
                 'direction': direction,
                 'stop_loss': stop_loss
-                # 'stop_profit': stop_profit
             }
 
     # Display last CHOCH info and trades table
