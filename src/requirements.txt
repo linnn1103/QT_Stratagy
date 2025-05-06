@@ -1,6 +1,6 @@
 pandas
 requests
-talib
+# talib
 # websocket-client
 streamlit
 plotly
