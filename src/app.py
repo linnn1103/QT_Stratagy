@@ -1,30 +1,40 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 from data.fetch_data import DataFetcher
 from strategy.structure import SMCStrategy
-from utils.order_filter import Filter
+from utils.indicator import Indicator
 
 @st.cache_data(show_spinner=False)
-def get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul) -> tuple:
+def get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul, slope_lookback) -> pd.DataFrame:
     fetcher = DataFetcher(symbol=symbol, interval=interval, limit=limit)
-    raw_df = fetcher.fetch_klines()
+    df = fetcher.fetch_klines()
     smc = SMCStrategy(
         atr_period=atr_period,
         swing_window=swing_window,
         fvg_window=fvg_window,
         volatility_multiplier=vol_mul
     )
-    df = smc.run(raw_df)
+    df = smc.run(df)
+    df['ADX'] = Indicator(df).get_ADX()
+
+    # Compute ADX regression slope over lookback
+    df['ADX_slope'] = np.nan
+    for i in range(slope_lookback - 1, len(df)):
+        y = df['ADX'].iloc[i - slope_lookback + 1: i + 1].values
+        x = np.arange(slope_lookback)
+        df.at[df.index[i], 'ADX_slope'] = np.polyfit(x, y, 1)[0]
+
     # Convert timestamp to UTC+8 and drop tzinfo for plotting
     df['timestamp'] = (
         df['timestamp']
-        .dt.tz_localize('UTC')
-        .dt.tz_convert('Asia/Taipei')
-        .dt.tz_localize(None)
+            .dt.tz_localize('UTC')
+            .dt.tz_convert('Asia/Taipei')
+            .dt.tz_localize(None)
     )
 
-    # BOS: Break of Structure only when close breaks last swing
+    # BOS detection
     df['BOS'] = False
     last_swing_high = None
     last_swing_low = None
@@ -40,7 +50,7 @@ def get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vo
             df.at[idx, 'BOS'] = True
             last_swing_low = None
 
-    # CHOCH: Change of Character when BOS direction flips
+    # CHOCH detection
     df['CHOCH'] = False
     prev_bos_dir = None
     for idx, row in df.iterrows():
@@ -49,10 +59,9 @@ def get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vo
             if prev_bos_dir and curr_dir != prev_bos_dir:
                 df.at[idx, 'CHOCH'] = True
             prev_bos_dir = curr_dir
-
-    # If CHOCH occurs, suppress BOS at the same index
+    # suppress BOS on CHOCH
     df.loc[df['CHOCH'], 'BOS'] = False
-    return raw_df, df
+    return df
 
 
 def main():
@@ -67,92 +76,60 @@ def main():
     limit = st.sidebar.slider(
         "Data Points (limit)", min_value=100, max_value=2000, value=600, step=100
     )
-    atr_period = st.sidebar.number_input(
-        "ATR Period", min_value=1, max_value=100, value=14
-    )
-    swing_window = st.sidebar.number_input(
-        "Swing Window", min_value=1, max_value=50, value=5
-    )
-    fvg_window = st.sidebar.number_input(
-        "FVG Window", min_value=2, max_value=50, value=3
-    )
-    vol_mul = st.sidebar.slider(
-        "Volatility Multiplier", 0.1, 5.0, value=1.3, step=0.1
-    )
+    atr_period = st.sidebar.number_input("ATR Period", min_value=1, max_value=100, value=14)
+    swing_window = st.sidebar.number_input("Swing Window", min_value=1, max_value=50, value=5)
+    fvg_window = st.sidebar.number_input("FVG Window", min_value=2, max_value=50, value=3)
+    vol_mul = st.sidebar.slider("Volatility Multiplier", 0.1, 5.0, value=1.3, step=0.1)
+    slope_lookback = st.sidebar.number_input("ADX Slope Lookback (x)", min_value=2, max_value=100, value=14)
 
     # Reactive compute
     with st.spinner("Fetching data and computing strategy..."):
-        raw_df, df = get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul)
+        df = get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul, slope_lookback)
     st.success("Computation completed!")
 
-    # Generate trade entries based on CHOCH signals
+    # Generate trade entries based on CHOCH + slope filter
     trades = []
-    active_trade = None  
+    active_trade = None  # holds current open trade
     for idx, row in df.iterrows():
-        if row['CHOCH']:
-            if not Filter(raw_df).ADX_fillter(idx):
-                continue
-            direction = 'Long' if row['close'] > row['open'] else 'Short'
-            entry_time = row['timestamp']
-            entry_price = row['close']
-            # Find reverse structure_break
-            if direction == 'Long':
-                cond_sl = (df['structure_break'] == 'break_low')
-                prev_sl = df[cond_sl].loc[:idx-1]
-                stop_loss = prev_sl.iloc[-1]['low'] if not prev_sl.empty else None
-            else:
-                cond_sl = (df['structure_break'] == 'break_high')
-                prev_sl = df[cond_sl].loc[:idx-1]
-                stop_loss = prev_sl.iloc[-1]['high'] if not prev_sl.empty else None
-            
-            if not active_trade:
-                trades.append({
-                    'entry_time': entry_time,
-                    'entry_price': entry_price,
-                    'direction': direction,
-                    'stop_loss': stop_loss
-                })
-                active_trade = {
-                    'idx': idx,
-                    'direction': direction,
-                    'stop_loss': stop_loss
-                }
-                continue
+        if not row['CHOCH']:
+            continue
+        slope = df['ADX_slope'].iat[idx]
+        if np.isnan(slope) or slope >= -0.1:
+            continue
+        direction = 'Long' if row['close'] > row['open'] else 'Short'
+        # skip only if there's an open trade of opposite direction
+        if active_trade and not active_trade['is_closed'] and direction != active_trade['direction']:
+            continue
+        direction = 'Long' if row['close'] > row['open'] else 'Short'
+        entry_time = row['timestamp']
+        entry_price = row['close']
+        # find previous opposite structure_break for stop_loss
+        if direction == 'Long':
+            prev = df[df['structure_break'] == 'break_low'].loc[:idx-1]
+            stop_loss = prev.iloc[-1]['low'] if not prev.empty else None
+        else:
+            prev = df[df['structure_break'] == 'break_high'].loc[:idx-1]
+            stop_loss = prev.iloc[-1]['high'] if not prev.empty else None
+        # record new trade
+        trade = {
+            'entry_time': entry_time,
+            'entry_price': entry_price,
+            'direction': direction,
+            'stop_loss': stop_loss,
+            'is_closed': False
+        }
+        trades.append(trade)
+        active_trade = trade
 
-            if active_trade['direction'] == direction:
-                continue
-
-            if active_trade['direction'] == 'Long':
-                sl_hit = (df.loc[active_trade['idx']:idx]['low'] <= active_trade['stop_loss']).any() if active_trade['stop_loss'] is not None else False
-            else:
-                sl_hit = (df.loc[active_trade['idx']:idx]['high'] >= active_trade['stop_loss']).any() if active_trade['stop_loss'] is not None else False
-
-            if not sl_hit:
-                continue
-
-            trades.append({
-                'entry_time': entry_time,
-                'entry_price': entry_price,
-                'direction': direction,
-                'stop_loss': stop_loss
-            })
-            active_trade = {
-                'idx': idx,
-                'direction': direction,
-                'stop_loss': stop_loss
-            }
-
-    # Display last CHOCH info and trades table
+    # Display last entry and trades
     if trades:
         last = trades[-1]
         st.subheader("Last Entry Signal")
         st.write(f"**Time (UTC+8):** {last['entry_time']}")
         st.write(f"**Price:** {last['entry_price']}")
         st.write(f"**Direction:** {last['direction']}")
-
         st.subheader("Trade Entries")
-        trades_df = pd.DataFrame(trades)
-        st.dataframe(trades_df)
+        st.dataframe(pd.DataFrame(trades))
 
     # Build dynamic zones
     zones = {'ob': [], 'fvg': [], 'structure': []}
@@ -198,7 +175,7 @@ def main():
     # Plot
     fig = go.Figure()
     fig.add_trace(go.Candlestick(
-        x=df['timestamp'], open=df['open'], high=df['high'], low=df['low'], close=df['close'], name='OHLC'
+        x=df['timestamp'], open=df['open'], high=df['high'], low=df['low'], close=df['close'], name='OHLC', customdata=df['ADX'],hoverinfo='text', text=df['ADX'].apply(lambda x: f"ADX: {x:.2f}"), showlegend=False
     ))
     # Swing markers
     fig.add_trace(go.Scatter(
