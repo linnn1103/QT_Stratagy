@@ -78,7 +78,8 @@ def main():
     fvg_window = st.sidebar.number_input("FVG Window", min_value=2, max_value=50, value=3)
     vol_mul = st.sidebar.slider("Volatility Multiplier", 0.1, 5.0, value=1.3, step=0.1)
     slope_lookback = st.sidebar.number_input("ADX Slope Lookback", min_value=2, max_value=100, value=14)
-
+    atr_filter = st.sidebar.number_input("ATR Filter", min_value=0.0, max_value=5.0, value=0.7, step=0.1)
+    adx_slope_filter = st.sidebar.number_input("ADX Slope Filter", min_value=-1.0, max_value=0.0, value=-0.1, step=0.01)
     with st.spinner("Fetching data and computing strategy..."):
         df = get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul, slope_lookback)
     st.success("Computation completed!")
@@ -92,7 +93,7 @@ def main():
         # First: check exit signals for any open trade
         for trade in list(open_trades):
             # exit if reverse CHOCH + ATR > threshold
-            if row['timestamp'] > trade['entry_time'] and row['CHOCH'] and row['ATR'] > 0.7:
+            if row['timestamp'] > trade['entry_time'] and row['CHOCH'] and row['ATR'] > atr_filter:
                 # confirm reverse direction
                 if (trade['direction'] == 'Long' and row['close'] < row['open']) or \
                    (trade['direction'] == 'Short' and row['close'] > row['open']):
@@ -105,7 +106,7 @@ def main():
         if not row['CHOCH']:
             continue
         ADX_slope = row.get('ADX_slope', np.nan)
-        if np.isnan(ADX_slope) or ADX_slope >= -0.1:
+        if np.isnan(ADX_slope) or ADX_slope >= adx_slope_filter:
             continue
         direction = 'Long' if row['close'] > row['open'] else 'Short'
         # allow entry only if no open or same direction
