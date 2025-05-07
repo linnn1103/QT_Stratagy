@@ -18,15 +18,13 @@ def get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vo
     )
     df = smc.run(df)
     df['ADX'] = Indicator(df).get_ADX()
-
-    # Compute ADX regression slope over lookback
+    df['ATR'] = Indicator(df).get_ATR()
     df['ADX_slope'] = np.nan
     for i in range(slope_lookback - 1, len(df)):
         y = df['ADX'].iloc[i - slope_lookback + 1: i + 1].values
         x = np.arange(slope_lookback)
         df.at[df.index[i], 'ADX_slope'] = np.polyfit(x, y, 1)[0]
 
-    # Convert timestamp to UTC+8 and drop tzinfo for plotting
     df['timestamp'] = (
         df['timestamp']
             .dt.tz_localize('UTC')
@@ -59,13 +57,12 @@ def get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vo
             if prev_bos_dir and curr_dir != prev_bos_dir:
                 df.at[idx, 'CHOCH'] = True
             prev_bos_dir = curr_dir
-    # suppress BOS on CHOCH
     df.loc[df['CHOCH'], 'BOS'] = False
     return df
 
 
 def main():
-    st.title("SMC Strategy Dashboard (Reactive)")
+    st.title("ㄈㄈㄈㄈ")
 
     # Sidebar parameters
     st.sidebar.header("Parameters")
@@ -82,54 +79,62 @@ def main():
     vol_mul = st.sidebar.slider("Volatility Multiplier", 0.1, 5.0, value=1.3, step=0.1)
     slope_lookback = st.sidebar.number_input("ADX Slope Lookback (x)", min_value=2, max_value=100, value=14)
 
-    # Reactive compute
     with st.spinner("Fetching data and computing strategy..."):
         df = get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul, slope_lookback)
     st.success("Computation completed!")
 
-    # Generate trade entries based on CHOCH + slope filter
-    trades = []
-    active_trade = None  # holds current open trade
+    # Prepare trade lists
+    open_trades = []
+    closed_trades = []
+
+    # Iterate over each bar to handle entry and exit sequentially
     for idx, row in df.iterrows():
+        # First: check exit signals for any open trade
+        for trade in list(open_trades):
+            # exit if reverse CHOCH + ATR > threshold
+            if row['timestamp'] > trade['entry_time'] and row['CHOCH'] and row['ATR'] > 0.7:
+                # confirm reverse direction
+                if (trade['direction'] == 'Long' and row['close'] < row['open']) or \
+                   (trade['direction'] == 'Short' and row['close'] > row['open']):
+                    trade['exit_time'] = row['timestamp']
+                    trade['exit_price'] = row['close']
+                    trade['is_closed'] = True
+                    closed_trades.append(trade)
+                    open_trades.remove(trade)
+        # Then: check entry conditions
         if not row['CHOCH']:
             continue
-        slope = df['ADX_slope'].iat[idx]
-        if np.isnan(slope) or slope >= -0.1:
+        ADX_slope = row.get('ADX_slope', np.nan)
+        if np.isnan(ADX_slope) or ADX_slope >= -0.1:
             continue
         direction = 'Long' if row['close'] > row['open'] else 'Short'
-        # skip only if there's an open trade of opposite direction
-        if active_trade and not active_trade['is_closed'] and direction != active_trade['direction']:
+        # allow entry only if no open or same direction
+        if open_trades and open_trades[0]['direction'] != direction:
             continue
-        direction = 'Long' if row['close'] > row['open'] else 'Short'
         entry_time = row['timestamp']
         entry_price = row['close']
-        # find previous opposite structure_break for stop_loss
+        # determine stop loss from previous structure break
         if direction == 'Long':
             prev = df[df['structure_break'] == 'break_low'].loc[:idx-1]
             stop_loss = prev.iloc[-1]['low'] if not prev.empty else None
         else:
             prev = df[df['structure_break'] == 'break_high'].loc[:idx-1]
             stop_loss = prev.iloc[-1]['high'] if not prev.empty else None
-        # record new trade
-        trade = {
+        open_trades.append({
             'entry_time': entry_time,
             'entry_price': entry_price,
             'direction': direction,
             'stop_loss': stop_loss,
             'is_closed': False
-        }
-        trades.append(trade)
-        active_trade = trade
+        })
 
-    # Display last entry and trades
-    if trades:
-        last = trades[-1]
-        st.subheader("Last Entry Signal")
-        st.write(f"**Time (UTC+8):** {last['entry_time']}")
-        st.write(f"**Price:** {last['entry_price']}")
-        st.write(f"**Direction:** {last['direction']}")
-        st.subheader("Trade Entries")
-        st.dataframe(pd.DataFrame(trades))
+    # Display ongoing and closed trades
+    if open_trades:
+        st.subheader("Open Trades")
+        st.dataframe(pd.DataFrame(open_trades))
+    if closed_trades:
+        st.subheader("Closed Trades")
+        st.dataframe(pd.DataFrame(closed_trades))
 
     # Build dynamic zones
     zones = {'ob': [], 'fvg': [], 'structure': []}
