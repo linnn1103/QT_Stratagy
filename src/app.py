@@ -137,12 +137,12 @@ def main():
 
     # Display ongoing and closed trades
     if open_trades:
-        st.subheader("Open Trades")
+        st.subheader("持倉中")
         st.dataframe(pd.DataFrame(open_trades))
     if closed_trades:
         closed_df = pd.DataFrame(closed_trades)
         closed_df['pnl'] = (closed_df['entry_price'] - closed_df['exit_price']) * closed_df['direction'].apply(lambda x: 1 if x == 'Long' else -1)
-        st.subheader("Closed Trades")
+        st.subheader("以平倉交易")
         st.dataframe(closed_df)
 
     # Build dynamic zones
