@@ -140,8 +140,10 @@ def main():
         st.subheader("Open Trades")
         st.dataframe(pd.DataFrame(open_trades))
     if closed_trades:
+        closed_df = pd.DataFrame(closed_trades)
+        closed_df['pnl'] = (closed_df['entry_price'] - closed_df['exit_price']) * closed_df['direction'].apply(lambda x: 1 if x == 'Long' else -1)
         st.subheader("Closed Trades")
-        st.dataframe(pd.DataFrame(closed_trades))
+        st.dataframe(closed_df)
 
     # Build dynamic zones
     zones = {'ob': [], 'fvg': [], 'structure': []}
