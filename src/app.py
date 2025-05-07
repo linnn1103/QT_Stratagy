@@ -65,21 +65,22 @@ def main():
     st.title("ㄈㄈㄈㄈ")
 
     # Sidebar parameters
-    st.sidebar.header("Parameters")
-    symbol = st.sidebar.text_input("Symbol", value="SOLUSDT")
+    st.sidebar.header("參數設定")
+    symbol = st.sidebar.text_input("交易對", value="SOLUSDT")
     interval = st.sidebar.selectbox(
-        "Interval", ["1m", "5m", "15m", "30m", "1h", "4h", "1d"], index=2
+        "時間框架", ["1m", "5m", "15m", "30m", "1h", "4h", "1d"], index=2
     )
     limit = st.sidebar.slider(
-        "Data Points (limit)", min_value=100, max_value=2000, value=600, step=100
+        "資料筆數", min_value=100, max_value=2000, value=600, step=100
     )
-    atr_period = st.sidebar.number_input("ATR Period", min_value=1, max_value=100, value=14)
-    swing_window = st.sidebar.number_input("Swing Window", min_value=1, max_value=50, value=5)
-    fvg_window = st.sidebar.number_input("FVG Window", min_value=2, max_value=50, value=3)
-    vol_mul = st.sidebar.slider("Volatility Multiplier", 0.1, 5.0, value=1.3, step=0.1)
-    slope_lookback = st.sidebar.number_input("ADX Slope Lookback", min_value=2, max_value=100, value=14)
-    atr_filter = st.sidebar.number_input("ATR Filter", min_value=0.0, max_value=5.0, value=0.7, step=0.1)
-    adx_slope_filter = st.sidebar.number_input("ADX Slope Filter", min_value=-1.0, max_value=0.0, value=-0.1, step=0.01)
+    atr_period = st.sidebar.number_input("ATR長度", min_value=1, max_value=100, value=14)
+    swing_window = st.sidebar.number_input("擺動點長度", min_value=1, max_value=50, value=5)
+    fvg_window = st.sidebar.number_input("FVG長度", min_value=2, max_value=50, value=3)
+    vol_mul = st.sidebar.slider("交易量過濾倍數", 0.1, 5.0, value=1.3, step=0.1)
+    slope_lookback = st.sidebar.number_input("ADX斜率長度", min_value=2, max_value=100, value=14)
+    atr_filter = st.sidebar.number_input("ATR過濾數值", min_value=0.0, max_value=5.0, value=0.7, step=0.1)
+    adx_slope_filter = st.sidebar.number_input("ADX斜率過濾", min_value=-1.0, max_value=0.0, value=-0.1, step=0.01)
+    stop_loss_factor = st.sidebar.number_input("止損倍數", min_value=0.0, max_value=1.0, value=0.035, step=0.005)
     with st.spinner("Fetching data and computing strategy..."):
         df = get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul, slope_lookback)
     st.success("Computation completed!")
@@ -114,13 +115,18 @@ def main():
             continue
         entry_time = row['timestamp']
         entry_price = row['close']
-        # determine stop loss from previous structure break
         if direction == 'Long':
             prev = df[df['structure_break'] == 'break_low'].loc[:idx-1]
-            stop_loss = prev.iloc[-1]['low'] if not prev.empty else None
+            if not prev.empty:
+                stop_loss = prev.iloc[-1]['low']
+            else:
+                stop_loss = entry_price * (1 - stop_loss_factor)  
         else:
             prev = df[df['structure_break'] == 'break_high'].loc[:idx-1]
-            stop_loss = prev.iloc[-1]['high'] if not prev.empty else None
+            if not prev.empty:
+                stop_loss = prev.iloc[-1]['high']
+            else:
+                stop_loss = entry_price * (1 + stop_loss_factor)
         open_trades.append({
             'entry_time': entry_time,
             'entry_price': entry_price,
