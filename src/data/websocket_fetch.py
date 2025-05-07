@@ -12,7 +12,7 @@ class WebSocketDataFetcher:
     """
     STREAM_URL = "wss://stream.binance.com:9443/ws"
 
-    def __init__(self, symbol: str = "BTCUSDT", interval: str = "15m", on_candle=None):
+    def __init__(self, symbol: str = "SOLUSDT", interval: str = "15m", on_candle=None):
         self.symbol = symbol
         self.interval = interval
         self.on_candle = on_candle or (lambda x: print(x))
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     closes = []
 
     def handle_candle(candle):
-        closes.append(candle['close'])
+        closes.append(candle)
         print(f"{candle['timestamp']}: Close = {candle['close']}")
 
     fetcher = WebSocketDataFetcher(symbol="SOLUSDT", interval="15m", on_candle=handle_candle)
