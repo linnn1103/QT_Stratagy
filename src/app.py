@@ -77,7 +77,7 @@ def main():
     swing_window = st.sidebar.number_input("Swing Window", min_value=1, max_value=50, value=5)
     fvg_window = st.sidebar.number_input("FVG Window", min_value=2, max_value=50, value=3)
     vol_mul = st.sidebar.slider("Volatility Multiplier", 0.1, 5.0, value=1.3, step=0.1)
-    slope_lookback = st.sidebar.number_input("ADX Slope Lookback (x)", min_value=2, max_value=100, value=14)
+    slope_lookback = st.sidebar.number_input("ADX Slope Lookback", min_value=2, max_value=100, value=14)
 
     with st.spinner("Fetching data and computing strategy..."):
         df = get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul, slope_lookback)
