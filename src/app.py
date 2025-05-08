@@ -142,7 +142,7 @@ def main():
     if closed_trades:
         closed_df = pd.DataFrame(closed_trades)
         closed_df['pnl'] = (closed_df['entry_price'] - closed_df['exit_price']) * closed_df['direction'].apply(lambda x: 1 if x == 'Long' else -1)
-        st.subheader("以平倉交易")
+        st.subheader("已平倉")
         st.dataframe(closed_df)
 
     # Build dynamic zones
