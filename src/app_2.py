@@ -11,7 +11,7 @@ import time, datetime
 @st.cache_data(show_spinner=False)
 
 def close_trade(trade, close_type, close_price, close_time):
-    print(f"Closing trade: {trade['direction']} at {close_price} on {close_time}")
+    print(f"已平倉: {trade['direction']} 價格: {close_price} 時間: {close_time} 平倉類型: {close_type}")
 
 def get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul, slope_lookback) -> pd.DataFrame:
     fetcher = DataFetcher(symbol=symbol, interval=interval, limit=limit)
@@ -105,21 +105,21 @@ def main():
         if trade['direction'] == 'Long':
             # 止損
             if last_row['low'] <= trade['stop_loss']:
-                closed = close_trade(trade, 'stop_loss', trade['stop_loss'], last_row['timestamp'])
+                closed = close_trade(trade, '止損', trade['stop_loss'], last_row['timestamp'])
                 st.session_state.closed_trades.append(closed)
                 st.session_state.open_trades.remove(trade)
             # 止盈（範例：漲超過某倍數）
             elif last_row['high'] >= trade['entry_price'] * (1 + stop_loss_factor * 2):
-                closed = close_trade(trade, 'take_profit', last_row['high'], last_row['timestamp'])
+                closed = close_trade(trade, '止盈', last_row['high'], last_row['timestamp'])
                 st.session_state.closed_trades.append(closed)
                 st.session_state.open_trades.remove(trade)
         else:
             if last_row['high'] >= trade['stop_loss']:
-                closed = close_trade(trade, 'stop_loss', trade['stop_loss'], last_row['timestamp'])
+                closed = close_trade(trade, '止損', trade['stop_loss'], last_row['timestamp'])
                 st.session_state.closed_trades.append(closed)
                 st.session_state.open_trades.remove(trade)
             elif last_row['low'] <= trade['entry_price'] * (1 - stop_loss_factor * 2):
-                closed = close_trade(trade, 'take_profit', last_row['low'], last_row['timestamp'])
+                closed = close_trade(trade, '止盈', last_row['low'], last_row['timestamp'])
                 st.session_state.closed_trades.append(closed)
                 st.session_state.open_trades.remove(trade)
 
