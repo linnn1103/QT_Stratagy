@@ -67,7 +67,7 @@ def get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vo
     return df
 
 def main():
-    st_autorefresh(interval=90000, limit=0, key="data_refresh")
+    st_autorefresh(interval=60000, limit=0, key="data_refresh")
     st.title("ㄈㄈㄈㄈ")
 
     # Sidebar parameters
@@ -245,10 +245,4 @@ def main():
     st.dataframe(df[display_cols].tail(50))
 
 if __name__ == '__main__':
-    while True:
-        now = datetime.datetime.now()
-        if now.minute % 15 == 0:
             main()
-            break
-        else:
-            time.sleep(5)  # 每 10 秒檢查一次
