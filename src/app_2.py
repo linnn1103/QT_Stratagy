@@ -251,4 +251,4 @@ if __name__ == '__main__':
             main()
             break
         else:
-            time.sleep(10)  # 每 10 秒檢查一次
+            time.sleep(5)  # 每 10 秒檢查一次
