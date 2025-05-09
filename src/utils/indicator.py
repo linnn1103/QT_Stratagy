@@ -1,5 +1,4 @@
 import talib
-import numpy as np
 import pandas as pd
 class Indicator:
     def __init__(self, data: pd.DataFrame):
