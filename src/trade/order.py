@@ -84,6 +84,20 @@ class OrderLogic:
         )
         return result
 
+    def close_order(self, instId, clOrdId, direction) -> dict:
+        """
+        Close an order
+        :param instId: Instrument ID
+        :param clOrdId: Client Order ID
+        :param direction: Order direction (Long/Short)
+        """
+        result = self.tradeAPI.close_positions(
+            instId=instId,
+            posSide=direction.lower(),
+            ccy="USDT",
+            clOrdId=clOrdId
+        )
+        return result
 if __name__ == "__main__":
     order_logic = OrderLogic()
     try:

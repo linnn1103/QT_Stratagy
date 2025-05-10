@@ -187,6 +187,11 @@ def main():
                 st.session_state.closed_trades.append(closed)
                 st.session_state.open_trades.remove(trade)
                 save_trades(st.session_state.open_trades, st.session_state.closed_trades)
+                OrderLogic().close_order(
+                    instId={'BTCUSDT': 'BTC-USDT-SWAP', 'ETHUSDT': 'ETH-USDT-SWAP', 'SOLUSDT': 'SOL-USDT-SWAP'}[symbol],
+                    clOrdId=f"{symbol}_Long",
+                    direction='Long',
+                )
         else:
             if last_row['high'] >= trade['stop_loss']:
                 closed = close_trade(trade, '止損', trade['stop_loss'], last_row['timestamp'])
@@ -198,7 +203,11 @@ def main():
                 st.session_state.closed_trades.append(closed)
                 st.session_state.open_trades.remove(trade)
                 save_trades(st.session_state.open_trades, st.session_state.closed_trades)
-
+                OrderLogic().close_order(
+                    instId={'BTCUSDT': 'BTC-USDT-SWAP', 'ETHUSDT': 'ETH-USDT-SWAP', 'SOLUSDT': 'SOL-USDT-SWAP'}[symbol],
+                    clOrdId=f"{symbol}_Short",
+                    direction='Short',
+                )
 
     # Trade logic
     can_open = False
@@ -213,8 +222,6 @@ def main():
     if can_open:
         entry_price = last_row['close']
         entry_time = last_row['timestamp']
-        insrtId = {'BTCUSDT':'BTC-USDT-SWAP', 'ETHUSDT':'ETH-USDT-SWAP', 'SOLUSDT':'SOL-USDT-SWAP'}
-
         if direction == 'Long':
             prev = df[df['structure_break'] == 'break_low'].iloc[:-1]
             stop_loss = prev.iloc[-1]['low'] if not prev.empty else entry_price * (1 - stop_loss_factor)
@@ -222,7 +229,7 @@ def main():
             prev = df[df['structure_break'] == 'break_high'].iloc[:-1]
             stop_loss = prev.iloc[-1]['high'] if not prev.empty else entry_price * (1 + stop_loss_factor)
         OrderLogic().create_order(
-            instId=insrtId[symbol],
+            instId={'BTCUSDT': 'BTC-USDT-SWAP', 'ETHUSDT': 'ETH-USDT-SWAP', 'SOLUSDT': 'SOL-USDT-SWAP'}[symbol],
             leverage=leverage,
             clOrdId=f"{symbol}_{direction}",
             direction=direction,
