@@ -61,7 +61,6 @@ class DataFetcher:
             logger.error("Error fetching klines: %s", e)
             raise
 
-        # 格式化並轉 DataFrame
         df = pd.DataFrame([
             {
                 "timestamp": pd.to_datetime(candle[0], unit="ms"),

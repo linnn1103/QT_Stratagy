@@ -20,6 +20,7 @@ class SMCStrategy:
     def find_swings(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Identify swing highs and lows using a rolling window.
+        :param df: DataFrame containing OHLC data
         """
         df['swing_high'] = False
         df['swing_low'] = False
@@ -36,6 +37,7 @@ class SMCStrategy:
     def identify_structure_breaks(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Mark structure break points when price breaks a prior swing high/low.
+        :param df: DataFrame containing swing high/low data
         """
         df['structure_break'] = None
         last_swing_high = None
@@ -55,6 +57,7 @@ class SMCStrategy:
     def detect_order_blocks(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Detect Order Blocks (OB) based on high-volatility candles and close position.
+        :param df: DataFrame containing OHLC data
         """
         df['bullish_ob'] = False
         df['bearish_ob'] = False
@@ -74,6 +77,7 @@ class SMCStrategy:
     def detect_fvg(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Detect Fair Value Gaps (FVG) by comparing three consecutive candles.
+        :param df: DataFrame containing OHLC data
         """
         df['fvg_bullish'] = False
         df['fvg_bearish'] = False
@@ -88,6 +92,10 @@ class SMCStrategy:
                 df.at[df.index[i], 'fvg_bearish'] = True
         return df
     def run(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Run the SMC strategy on the provided DataFrame.
+        :param df: DataFrame containing OHLC data
+        """
         df['atr'] = talib.ATR(
             df['high'], df['low'], df['close'], timeperiod=self.atr_period
         )

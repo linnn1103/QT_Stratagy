@@ -1,3 +1,5 @@
+#TODO: 更改資料獲取方式成 websocket 
+#TODO: mutipleprocessing
 import streamlit as st
 import pandas as pd
 import numpy as np

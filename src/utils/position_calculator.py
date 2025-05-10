@@ -3,7 +3,6 @@ import streamlit as st
 st.set_page_config(page_title="倉位計算器", layout="centered")
 st.title("📈倉位計算器")
 
-# 自定義樣式
 st.markdown("""
 <style>
 @media (max-width: 600px) {
@@ -43,7 +42,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 用戶輸入部分
 with st.container():
     col1, col2 = st.columns(2)
     with col1:
@@ -93,7 +91,6 @@ if risk_pct <= 0:
     st.stop()
 
 try:
-    # 含手續費的保證金計算
     fee_contribution = 2 * (fee_rate / 100)
     denominator = leverage * (abs(risk_pct) + fee_contribution)
     margin = max_loss_total / denominator

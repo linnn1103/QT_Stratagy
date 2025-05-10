@@ -6,6 +6,7 @@ from data.fetch_data import DataFetcher
 from strategy.structure import SMCStrategy
 from utils.indicator import Indicator
 from streamlit_autorefresh import st_autorefresh
+from trade.order import OrderLogic
 import time, datetime
 import json
 import os
@@ -14,6 +15,11 @@ TRADES_FILE = "trades_record.json"
 @st.cache_data(show_spinner=False)
 
 def save_trades(open_trades, closed_trades):
+    """
+    Save open and closed trades to a JSON file.
+    :param open_trades: list, list of open trades
+    :param closed_trades: list, list of closed trades
+    """
     data = {
         "open_trades": open_trades,
         "closed_trades": closed_trades
@@ -26,7 +32,7 @@ def load_trades():
         with open(TRADES_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
             return data.get("open_trades", []), data.get("closed_trades", [])
-    return 0
+    return [], []
 
 def load_trades():
     if os.path.exists(TRADES_FILE):
@@ -35,7 +41,14 @@ def load_trades():
             return data.get("open_trades", []), data.get("closed_trades", [])
     return [], []
 
-def close_trade(trade, close_type, close_price, close_time):
+def close_trade(trade, close_type, close_price, close_time) -> dict:
+    """
+    Closes a trade and logs the details.
+    :param trade: dict, the trade to be closed
+    :param close_type: str, the type of closing (e.g., '止損', '止盈')
+    :param close_price: float, the price at which the trade is closed
+    :param close_time: datetime, the time at which the trade is closed
+    """
     print(f"已平倉: {trade['direction']} 價格: {close_price} 時間: {close_time} 平倉類型: {close_type}")
     closed_trade = trade.copy()
     closed_trade['exit_price'] = close_price
@@ -45,9 +58,27 @@ def close_trade(trade, close_type, close_price, close_time):
     return closed_trade
 
 def close_trade(trade, close_type, close_price, close_time):
+    """
+    Closes a trade and logs the details.
+    :param trade: dict, the trade to be closed
+    :param close_type: str, the type of closing (e.g., '止損', '止盈')
+    :param close_price: float, the price at which the trade is closed
+    :param close_time: datetime, the time at which the trade is closed
+    """
     print(f"已平倉: {trade['direction']} 價格: {close_price} 時間: {close_time} 平倉類型: {close_type}")
 
 def get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul, slope_lookback) -> pd.DataFrame:
+    """
+    Fetches data and computes the SMC strategy indicators.
+    :param symbol: str, the trading pair symbol
+    :param interval: str, the time interval for the data
+    :param limit: int, the number of data points to fetch
+    :param atr_period: int, the period for ATR calculation
+    :param swing_window: int, the window for swing point detection
+    :param fvg_window: int, the window for FVG detection
+    :param vol_mul: float, the multiplier for volume filtering
+    :param slope_lookback: int, the lookback period for ADX slope calculation
+    """
     fetcher = DataFetcher(symbol=symbol, interval=interval, limit=limit)
     df = fetcher.fetch_klines()
     smc = SMCStrategy(
@@ -128,23 +159,21 @@ def main():
     atr_filter = st.sidebar.number_input("ATR過濾數值", min_value=0.0, value=a[symbol], step=0.1)
     adx_slope_filter = st.sidebar.number_input("ADX斜率過濾", min_value=-1.0, max_value=0.0, value=-0.1, step=0.01)
     stop_loss_factor = st.sidebar.number_input("止損倍數", min_value=0.0, max_value=1.0, value=0.035, step=0.005)
+    leverage = st.sidebar.number_input("槓桿倍數", min_value=1, max_value=50, value=5, step=1)
     with st.spinner("Fetching data and computing strategy..."):
         df = get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul, slope_lookback)
     with st.spinner("Fetching data and computing strategy..."):
         df = get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul, slope_lookback)
     st.info(f"資料刷新時間：{pd.Timestamp.now(tz='Asia/Taipei').strftime('%Y-%m-%d %H:%M:%S')}")
-    # 僅取最新一根K線
+    
     last_row = df.iloc[-1]
-    last_idx = df.index[-1]
 
-    # 用於持倉與已平倉訂單
     if 'open_trades' not in st.session_state:
         st.session_state.open_trades = []
     if 'closed_trades' not in st.session_state:
         st.session_state.closed_trades = []
 
-    # 追蹤持倉止盈止損
-    # 追蹤持倉止盈止損
+    # Status tracking
     for trade in list(st.session_state.open_trades):
         # 止損
         if trade['direction'] == 'Long':
@@ -171,25 +200,36 @@ def main():
                 save_trades(st.session_state.open_trades, st.session_state.closed_trades)
 
 
-    # 判斷最新K線是否可開倉
+    # Trade logic
     can_open = False
     direction = None
     ADX_slope = last_row.get('ADX_slope', np.nan)
     if last_row['CHOCH'] and not np.isnan(ADX_slope) and ADX_slope < adx_slope_filter:
         direction = 'Long' if last_row['close'] > last_row['open'] else 'Short'
-        # 只允許同方向或無持倉
+        # Same direction only
         if not st.session_state.open_trades or st.session_state.open_trades[0]['direction'] == direction:
             can_open = True
 
     if can_open:
         entry_price = last_row['close']
         entry_time = last_row['timestamp']
+        insrtId = {'BTCUSDT':'BTC-USDT-SWAP', 'ETHUSDT':'ETH-USDT-SWAP', 'SOLUSDT':'SOL-USDT-SWAP'}
+
         if direction == 'Long':
             prev = df[df['structure_break'] == 'break_low'].iloc[:-1]
             stop_loss = prev.iloc[-1]['low'] if not prev.empty else entry_price * (1 - stop_loss_factor)
         else:
             prev = df[df['structure_break'] == 'break_high'].iloc[:-1]
             stop_loss = prev.iloc[-1]['high'] if not prev.empty else entry_price * (1 + stop_loss_factor)
+        OrderLogic().create_order(
+            instId=insrtId[symbol],
+            leverage=leverage,
+            clOrdId=f"{symbol}_{direction}",
+            direction=direction,
+            entry_price=entry_price,
+            stop_loss_price=stop_loss
+        )
+        
         st.session_state.open_trades.append({
             'entry_time': entry_time,
             'entry_price': entry_price,
@@ -200,7 +240,7 @@ def main():
         save_trades(st.session_state.open_trades, st.session_state.closed_trades)
 
 
-    # 顯示持倉與已平倉
+    # Trade history 
     if st.session_state.open_trades:
         st.subheader("持倉中")
         st.dataframe(pd.DataFrame(st.session_state.open_trades))
@@ -215,7 +255,7 @@ def main():
     zones = {'ob': [], 'fvg': [], 'structure': []}
     last_time = df['timestamp'].iat[-1]
 
-    # Order Block, FVG, Structure zones (logic unchanged)
+    # Order Block, FVG, Structure zones
     for i, row in df.iterrows():
         if row['bullish_ob']:
             y0, y1 = row['low'], row['high']
@@ -302,4 +342,4 @@ if __name__ == '__main__':
             main()
             break
         else:
-            time.sleep(5)  # 每 10 秒檢查一次
+            time.sleep(5)
