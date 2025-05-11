@@ -7,7 +7,7 @@ from strategy.structure import SMCStrategy
 from utils.indicator import Indicator
 from streamlit_autorefresh import st_autorefresh
 from trade.order import OrderLogic
-import time, datetime
+# import time, datetime
 import json
 import os
 TRADES_FILE = "trades_record.json"
@@ -28,13 +28,9 @@ def save_trades(open_trades, closed_trades):
         json.dump(data, f, ensure_ascii=False, default=str, indent=2)
 
 def load_trades():
-    if os.path.exists(TRADES_FILE):
-        with open(TRADES_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data.get("open_trades", []), data.get("closed_trades", [])
-    return [], []
-
-def load_trades():
+    """
+    Load open and closed trades from a JSON file.
+    """
     if os.path.exists(TRADES_FILE):
         with open(TRADES_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -136,7 +132,7 @@ def main():
         open_trades, closed_trades = load_trades()
         st.session_state.open_trades = open_trades
         st.session_state.closed_trades = closed_trades
-    st_autorefresh(interval=120000, limit=0, key="data_refresh")
+    st_autorefresh(interval=59998, limit=0, key="data_refresh")
     st.title("ㄈㄈㄈㄈ")
 
     # Sidebar parameters
@@ -342,11 +338,11 @@ def main():
     st.dataframe(df[display_cols].tail(50))
 
 if __name__ == '__main__':
-    # main()
-    while True:
-        now = datetime.datetime.now()
-        if now.minute % 15 == 0:
-            main()
-            break
-        else:
-            time.sleep(5)
+    main()
+    # while True:
+    #     now = datetime.datetime.now()
+    #     if now.minute % 15 == 0:
+    #         main()
+    #         break
+    #     else:
+    #         time.sleep(5)
