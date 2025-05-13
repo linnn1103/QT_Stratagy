@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 class DataFetcher:
-    BASE_URL = "https://api4.binance.com/api/v3/klines"
+    BASE_URL = "https://api3.binance.com/api/v3/klines"
 
     def __init__(
         self,

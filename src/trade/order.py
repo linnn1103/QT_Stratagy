@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 import okx.Account as Account
 import okx.Trade as Trade
+import logging
 
 load_dotenv()
 
@@ -24,7 +25,7 @@ class OrderLogic:
             usdt_detail = next(
                 d for d in balance_data['data'][0]['details'] if d['ccy'] == 'USDT'
             )
-            avail_bal = usdt_detail['availBal']
+            avail_bal = float(usdt_detail['availBal'])  # 轉成 float
             return avail_bal
         except Exception as e:
             raise ValueError(f"Error: {e}")
@@ -53,8 +54,9 @@ class OrderLogic:
         denominator = leverage * (abs(risk_pct) + fee_contribution)
         if denominator == 0:
             raise ZeroDivisionError("Denominator Error")
-        margin = max_loss_total / denominator
-        return margin
+        margin = max_loss_total / denominator /entry_price
+        logging.info(f'margin: {margin}')
+        return round(margin, 1)
 
     def create_order(self,instId, leverage, clOrdId, direction, entry_price, stop_loss_price) -> dict:
         """
@@ -75,13 +77,13 @@ class OrderLogic:
         result = self.tradeAPI.place_order(
             instId=instId,
             tdMode="cross",
-            ccy="USDT",
             clOrdId=clOrdId,
             side="buy" if direction == "Long" else "sell",
             posSide=direction.lower(),
             ordType="market",
             sz=margin
         )
+        logging.info(f"Order created: {result}")
         return result
 
     def close_order(self, instId, clOrdId, direction) -> dict:
@@ -93,8 +95,8 @@ class OrderLogic:
         """
         result = self.tradeAPI.close_positions(
             instId=instId,
+            mgnMode="cross",
             posSide=direction.lower(),
-            ccy="USDT",
             clOrdId=clOrdId
         )
         return result

@@ -7,9 +7,9 @@ from strategy.structure import SMCStrategy
 from utils.indicator import Indicator
 from streamlit_autorefresh import st_autorefresh
 from trade.order import OrderLogic
+from backtest.backtest import BacktestDataSaver
 # import time, datetime
-import json
-import os
+import json, os
 TRADES_FILE = "trades_record.json"
 
 @st.cache_data(show_spinner=False)
@@ -53,16 +53,6 @@ def close_trade(trade, close_type, close_price, close_time) -> dict:
     closed_trade['is_closed'] = True
     return closed_trade
 
-def close_trade(trade, close_type, close_price, close_time):
-    """
-    Closes a trade and logs the details.
-    :param trade: dict, the trade to be closed
-    :param close_type: str, the type of closing (e.g., '止損', '止盈')
-    :param close_price: float, the price at which the trade is closed
-    :param close_time: datetime, the time at which the trade is closed
-    """
-    print(f"已平倉: {trade['direction']} 價格: {close_price} 時間: {close_time} 平倉類型: {close_type}")
-
 def get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul, slope_lookback) -> pd.DataFrame:
     """
     Fetches data and computes the SMC strategy indicators.
@@ -77,6 +67,11 @@ def get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vo
     """
     fetcher = DataFetcher(symbol=symbol, interval=interval, limit=limit)
     df = fetcher.fetch_klines()
+
+    ##########################回測用
+    # a=BacktestDataSaver()
+    # df = a.rr()
+    ##########################
     smc = SMCStrategy(
         atr_period=atr_period,
         swing_window=swing_window,
@@ -128,11 +123,18 @@ def get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vo
     return df
 
 def main():
+    # 強制初始化為 list，避免被覆蓋成 dict
+    if not isinstance(st.session_state.get('open_trades', []), list):
+        st.session_state.open_trades = []
+    if not isinstance(st.session_state.get('closed_trades', []), list):
+        st.session_state.closed_trades = []
+
     if 'open_trades' not in st.session_state or 'closed_trades' not in st.session_state:
         open_trades, closed_trades = load_trades()
         st.session_state.open_trades = open_trades
         st.session_state.closed_trades = closed_trades
-    st_autorefresh(interval=59998, limit=0, key="data_refresh")
+        
+    st_autorefresh(interval=10000, limit=0, key="data_refresh")
     st.title("ㄈㄈㄈㄈ")
 
     # Sidebar parameters
@@ -156,8 +158,6 @@ def main():
     adx_slope_filter = st.sidebar.number_input("ADX斜率過濾", min_value=-1.0, max_value=0.0, value=-0.1, step=0.01)
     stop_loss_factor = st.sidebar.number_input("止損倍數", min_value=0.0, max_value=1.0, value=0.035, step=0.005)
     leverage = st.sidebar.number_input("槓桿倍數", min_value=1, max_value=50, value=5, step=1)
-    with st.spinner("Fetching data and computing strategy..."):
-        df = get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul, slope_lookback)
     with st.spinner("Fetching data and computing strategy..."):
         df = get_smc_df(symbol, interval, limit, atr_period, swing_window, fvg_window, vol_mul, slope_lookback)
     st.info(f"資料刷新時間：{pd.Timestamp.now(tz='Asia/Taipei').strftime('%Y-%m-%d %H:%M:%S')}")
@@ -185,7 +185,7 @@ def main():
                 save_trades(st.session_state.open_trades, st.session_state.closed_trades)
                 OrderLogic().close_order(
                     instId={'BTCUSDT': 'BTC-USDT-SWAP', 'ETHUSDT': 'ETH-USDT-SWAP', 'SOLUSDT': 'SOL-USDT-SWAP'}[symbol],
-                    clOrdId=f"{symbol}_Long",
+                    clOrdId=f"{symbol}",
                     direction='Long',
                 )
         else:
@@ -201,7 +201,7 @@ def main():
                 save_trades(st.session_state.open_trades, st.session_state.closed_trades)
                 OrderLogic().close_order(
                     instId={'BTCUSDT': 'BTC-USDT-SWAP', 'ETHUSDT': 'ETH-USDT-SWAP', 'SOLUSDT': 'SOL-USDT-SWAP'}[symbol],
-                    clOrdId=f"{symbol}_Short",
+                    clOrdId=f"{symbol}",
                     direction='Short',
                 )
 
@@ -218,40 +218,60 @@ def main():
     if can_open:
         entry_price = last_row['close']
         entry_time = last_row['timestamp']
-        if direction == 'Long':
-            prev = df[df['structure_break'] == 'break_low'].iloc[:-1]
-            stop_loss = prev.iloc[-1]['low'] if not prev.empty else entry_price * (1 - stop_loss_factor)
-        else:
-            prev = df[df['structure_break'] == 'break_high'].iloc[:-1]
-            stop_loss = prev.iloc[-1]['high'] if not prev.empty else entry_price * (1 + stop_loss_factor)
-        OrderLogic().create_order(
-            instId={'BTCUSDT': 'BTC-USDT-SWAP', 'ETHUSDT': 'ETH-USDT-SWAP', 'SOLUSDT': 'SOL-USDT-SWAP'}[symbol],
-            leverage=leverage,
-            clOrdId=f"{symbol}_{direction}",
-            direction=direction,
-            entry_price=entry_price,
-            stop_loss_price=stop_loss
+        clOrdId = f"{symbol}{direction.lower()}"
+        # 檢查是否已存在同 entry_time 或 clOrdId 的訂單
+        already_open = any(
+            (str(trade.get('entry_time')) == str(entry_time)) or (trade.get('clOrdId') == clOrdId)
+            for trade in st.session_state.open_trades
         )
-        
-        st.session_state.open_trades.append({
-            'entry_time': entry_time,
-            'entry_price': entry_price,
-            'direction': direction,
-            'stop_loss': stop_loss,
-            'is_closed': False
-        })
-        save_trades(st.session_state.open_trades, st.session_state.closed_trades)
+        if not already_open:
+            if direction == 'Long':
+                prev = df[df['structure_break'] == 'break_low'].iloc[:-1]
+                stop_loss = prev.iloc[-1]['low'] if not prev.empty else entry_price * (1 - stop_loss_factor)
+            else:
+                prev = df[df['structure_break'] == 'break_high'].iloc[:-1]
+                stop_loss = prev.iloc[-1]['high'] if not prev.empty else entry_price * (1 + stop_loss_factor)
+            OrderLogic().create_order(
+                instId={'BTCUSDT': 'BTC-USDT-SWAP', 'ETHUSDT': 'ETH-USDT-SWAP', 'SOLUSDT': 'SOL-USDT-SWAP'}[symbol],
+                leverage=leverage,
+                clOrdId=clOrdId,
+                direction=direction,
+                entry_price=entry_price,
+                stop_loss_price=stop_loss
+            )
+            st.session_state.open_trades.append({
+                'clOrdId': clOrdId,
+                'entry_time': entry_time,
+                'entry_price': entry_price,
+                'direction': direction,
+                'stop_loss': stop_loss,
+                'is_closed': False
+            })
+            save_trades(st.session_state.open_trades, st.session_state.closed_trades)
 
 
     # Trade history 
     if st.session_state.open_trades:
         st.subheader("持倉中")
-        st.dataframe(pd.DataFrame(st.session_state.open_trades))
+        open_df = pd.DataFrame(st.session_state.open_trades)
+        if 'entry_time' in open_df.columns:
+            open_df['entry_time'] = open_df['entry_time'].astype(str)
+        st.dataframe(open_df)
     if st.session_state.closed_trades:
-        closed_df = pd.DataFrame(st.session_state.closed_trades)
-        closed_df['pnl'] = (closed_df['entry_price'] - closed_df['exit_price']) * closed_df['direction'].apply(lambda x: 1 if x == 'Long' else -1)
-        st.subheader("以平倉交易")
-        st.dataframe(closed_df)
+        # 過濾掉 None 或缺少必要欄位的紀錄
+        valid_trades = [
+            t for t in st.session_state.closed_trades
+            if t and 'entry_price' in t and 'exit_price' in t and 'direction' in t
+        ]
+        closed_df = pd.DataFrame(valid_trades)
+        if not closed_df.empty:
+            if 'entry_time' in closed_df.columns:
+                closed_df['entry_time'] = closed_df['entry_time'].astype(str)
+            if 'exit_time' in closed_df.columns:
+                closed_df['exit_time'] = closed_df['exit_time'].astype(str)
+            closed_df['pnl'] = (closed_df['entry_price'] - closed_df['exit_price']) * closed_df['direction'].apply(lambda x: 1 if x == 'Long' else -1)
+            st.subheader("以平倉交易")
+            st.dataframe(closed_df)
 
 
     # Build dynamic zones
